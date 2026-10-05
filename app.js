@@ -3,8 +3,8 @@ const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelect
 const KEY='sst4_state';
 const seed=[{id:'b1',title:'Проект Рози',author:'Грэм Симсион',pages:320,read:210,status:'reading',cover:'',year:2013},{id:'b2',title:'Атомные привычки',author:'Джеймс Клир',pages:320,read:320,status:'finished',cover:'',year:2018},{id:'b3',title:'Марсианин',author:'Энди Вейер',pages:384,read:0,status:'planned',cover:'',year:2011},{id:'b4',title:'1984',author:'Джордж Оруэлл',pages:328,read:328,status:'finished',cover:'',year:1949}];
 let state=JSON.parse(localStorage.getItem(KEY)||'null')||{books:seed,notes:[],goalBooks:30,goalPages:20,sessions:{},seconds:0,history:[],collections:[],series:[],profile:{name:'Читатель',avatar:''},reviews:{},theme:'light'};
-let cloud=null,user=null,syncTimer=null,timerId=null,timerStart=0,timerElapsed=0,activeBook=null,month=new Date(),libraryFilter='all',noteFilter='all';
-function saveLocal(){localStorage.setItem(KEY,JSON.stringify(state)); if(user&&cloud){clearTimeout(syncTimer);syncTimer=setTimeout(syncCloud,500)}}
+let cloud=null,user=null,syncTimer=null,realtimeChannel=null,timerId=null,timerStart=0,timerElapsed=0,activeBook=null,month=new Date(),libraryFilter='all',noteFilter='all';
+function saveLocal(queueCloud=true){localStorage.setItem(KEY,JSON.stringify(state)); if(queueCloud&&user&&cloud){clearTimeout(syncTimer);syncTimer=setTimeout(()=>syncCloud(false),650)}}
 function save(){saveLocal(); renderCurrent()}
 function esc(v=''){return String(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function pct(b){return b.pages?Math.min(100,Math.round(b.read/b.pages*100)):0}
@@ -17,10 +17,72 @@ function completedBooks(){return state.books.filter(b=>b.status==='finished'||b.
 function totalPages(){return state.books.reduce((n,b)=>n+Math.min(b.read,b.pages),0)}
 function streak(){let days=Object.keys(state.sessions).filter(k=>(state.sessions[k]?.pages||0)>0).sort();if(!days.length)return 0;let set=new Set(days),d=new Date(days.at(-1));let n=0;while(set.has(dateKey(d))){n++;d.setDate(d.getDate()-1)}return n}
 function stats(){let today=state.sessions[dateKey()]||{};let year=new Date().getFullYear();let ybooks=state.books.filter(b=>b.status==='finished'&&b.finishedAt&&new Date(b.finishedAt).getFullYear()===year).length;let sec=state.seconds;let pages=totalPages();return {todayPages:today.pages||0,ybooks,ypages:Object.entries(state.sessions).filter(([k])=>k.startsWith(year+'-')).reduce((n,[,v])=>n+(v.pages||0),0),books:completedBooks(),pages,time:sec,speed:sec?Math.round(pages/(sec/3600)):0,streak:streak()}}
-async function initCloud(){try{if(!window.supabase||!window.SUPABASE_URL){setSync('Локально');return}cloud=window.supabase.createClient(window.SUPABASE_URL,window.SUPABASE_ANON_KEY);let s=await cloud.auth.getSession();user=s.data.session?.user||null;if(user)await loadCloud();setSync(user?'Синхронизировано':'Локально');cloud.auth.onAuthStateChange(async(_e,session)=>{user=session?.user||null;if(user)await loadCloud();setSync(user?'Синхронизировано':'Локально');renderCurrent()})}catch(e){console.error(e);setSync('Локально')}}
-function setSync(t){let e=$('#syncBadge');if(e)e.textContent='● '+t;let a=$('#authOpen');if(a)a.textContent=user?'Профиль':'Войти'}
-async function loadCloud(){if(!cloud||!user)return;let {data,error}=await cloud.from('user_data').select('data').eq('user_id',user.id).maybeSingle();if(error)return;if(data?.data&&Object.keys(data.data).length){state={...state,...data.data};saveLocal()}let p=await cloud.from('profiles').select('*').eq('id',user.id).maybeSingle();if(p.data){state.profile={...state.profile,name:p.data.display_name||state.profile.name,avatar:p.data.avatar||state.profile.avatar};saveLocal()}}
-async function syncCloud(){if(!cloud||!user)return;await cloud.from('user_data').upsert({user_id:user.id,data:state,updated_at:new Date().toISOString()},{onConflict:'user_id'});await cloud.from('profiles').upsert({id:user.id,display_name:state.profile.name||'Читатель',avatar:state.profile.avatar||null,updated_at:new Date().toISOString()},{onConflict:'id'});setSync('Синхронизировано')}
+async function initCloud(){
+  try{
+    if(!window.supabase||!window.SUPABASE_URL){setSync('Локально');return}
+    cloud=window.supabase.createClient(window.SUPABASE_URL,window.SUPABASE_ANON_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+    const s=await cloud.auth.getSession();
+    user=s.data.session?.user||null;
+    if(user) await loadCloud(); else setSync('Локально');
+    cloud.auth.onAuthStateChange((_e,session)=>{
+      user=session?.user||null;
+      setTimeout(async()=>{
+        if(user){await loadCloud();setSync('Синхронизировано')}
+        else{setSync('Локально');unsubscribeRealtime()}
+        refreshChrome();renderCurrent();
+      },0);
+    });
+  }catch(e){console.error(e);setSync('Ошибка подключения')}
+}
+function setSync(t){
+  let e=$('#syncBadge');
+  if(e){e.textContent='● '+t;e.classList.toggle('sync-error',/Ошибка/.test(t));e.classList.toggle('sync-ok',t==='Синхронизировано')}
+  let a=$('#authOpen');if(a)a.textContent=user?'Профиль':'Войти';
+  let c=$('#createAccount');if(c)c.hidden=!!user;
+  let m=$('#miniAvatar');if(m)m.src=state.profile.avatar||'logo-sashok-stishok.png';
+}
+function refreshChrome(){setSync(user?'Синхронизировано':'Локально')}
+function unsubscribeRealtime(){if(cloud&&realtimeChannel){try{cloud.removeChannel(realtimeChannel)}catch{}realtimeChannel=null}}
+function subscribeRealtime(){
+  if(!cloud||!user)return;
+  unsubscribeRealtime();
+  realtimeChannel=cloud.channel('sst4-user-sync-'+user.id)
+    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'user_data',filter:'user_id=eq.'+user.id},payload=>{
+      if(payload.new?.data&&payload.new.data.updatedAt!==state.updatedAt){state={...state,...payload.new.data};saveLocal(false);renderCurrent();setSync('Синхронизировано')}
+    })
+    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'profiles',filter:'id=eq.'+user.id},payload=>{
+      if(payload.new){state.profile={...state.profile,name:payload.new.display_name||state.profile.name,avatar:payload.new.avatar||state.profile.avatar};saveLocal(false);renderCurrent()}
+    })
+    .subscribe();
+}
+async function loadCloud(){
+  if(!cloud||!user)return false;
+  setSync('Синхронизация…');
+  const remote=await cloud.from('user_data').select('data').eq('user_id',user.id).maybeSingle();
+  if(remote.error){console.error(remote.error);setSync('Ошибка синхронизации');return false}
+  const hasRemote=!!(remote.data?.data&&Object.keys(remote.data.data).length);
+  if(hasRemote){state={...state,...remote.data.data};state.updatedAt=remote.data.data.updatedAt||state.updatedAt;saveLocal(false)}
+  const prof=await cloud.from('profiles').select('*').eq('id',user.id).maybeSingle();
+  if(prof.error){console.error(prof.error)}
+  if(prof.data){state.profile={...state.profile,name:prof.data.display_name||state.profile.name,avatar:prof.data.avatar||state.profile.avatar};saveLocal(false)}
+  if(!hasRemote){await syncCloud(true)}
+  subscribeRealtime();
+  setSync('Синхронизировано');
+  return hasRemote;
+}
+async function syncCloud(manual=false){
+  if(!cloud||!user){if(manual)setSync('Войдите для синхронизации');return false}
+  state.updatedAt=new Date().toISOString();
+  if(manual)setSync('Сохранение…');
+  try{
+    const r1=await cloud.from('user_data').upsert({user_id:user.id,data:state,updated_at:state.updatedAt},{onConflict:'user_id'});
+    if(r1.error)throw r1.error;
+    const r2=await cloud.from('profiles').upsert({id:user.id,display_name:state.profile.name||'Читатель',avatar:state.profile.avatar||null,updated_at:state.updatedAt},{onConflict:'id'});
+    if(r2.error)throw r2.error;
+    setSync('Синхронизировано');
+    return true;
+  }catch(e){console.error('syncCloud',e);setSync('Ошибка синхронизации');return false}
+}
 function modal(html){let wrap=document.createElement('dialog');wrap.className='modal';wrap.innerHTML=html;document.body.append(wrap);wrap.addEventListener('click',e=>{if(e.target===wrap)wrap.close()});wrap.showModal();return wrap}
 function bookCard(b){return `<article class="book"><div class="cover">${coverHtml(b)}</div><div class="book-body"><h3>${esc(b.title)}</h3><p>${esc(b.author)}</p><div class="progress"><i style="width:${pct(b)}%"></i></div><div class="book-meta"><span>${b.status==='finished'?'Прочитано':b.status==='reading'?`${b.read} / ${b.pages} стр.`:'В планах'}</span><b>${pct(b)}%</b></div><div class="book-actions"><button class="icon-btn" data-edit="${b.id}">Редактировать</button><button class="icon-btn" data-detail="${b.id}">Открыть</button></div></div></article>`}
 function renderHome(){
@@ -38,7 +100,16 @@ function renderHome(){
   $$('[data-edit]').forEach(b=>b.onclick=()=>openBookForm(state.books.find(x=>String(x.id)===String(b.dataset.edit))));
   $$('[data-detail]').forEach(b=>b.onclick=()=>openBookDetail(state.books.find(x=>String(x.id)===String(b.dataset.detail))));
 }
-function renderLibrary(){let q=($('#librarySearch')?.value||'').toLowerCase();let arr=state.books.filter(b=>(libraryFilter==='all'||b.status===libraryFilter)&&(b.title+' '+b.author+' '+(b.isbn||'')).toLowerCase().includes(q));$('#libraryBooks').innerHTML=arr.length?arr.map(bookCard).join(''):'<div class="empty">Книг не найдено.</div>';$$('[data-filter]').forEach(x=>x.onclick=()=>{libraryFilter=x.dataset.filter;$$('[data-filter]').forEach(y=>y.classList.remove('active'));x.classList.add('active');renderLibrary()});$('#librarySearch').oninput=renderLibrary;$$('[data-edit]').forEach(b=>b.onclick=()=>openBookForm(state.books.find(x=>String(x.id)===String(b.dataset.edit))));$$('[data-detail]').forEach(b=>b.onclick=()=>openBookDetail(state.books.find(x=>String(x.id)===String(b.dataset.detail))))}
+function renderLibrary(){
+  let q=($('#librarySearch')?.value||'').toLowerCase();
+  let arr=state.books.filter(b=>(libraryFilter==='all'||b.status===libraryFilter)&&(b.title+' '+b.author+' '+(b.isbn||'')).toLowerCase().includes(q));
+  $('#libraryBooks').innerHTML=arr.length?arr.map(bookCard).join(''):'<div class="empty">Книг не найдено.</div>';
+  $$('[data-filter]').forEach(x=>x.onclick=()=>{libraryFilter=x.dataset.filter;$$('[data-filter]').forEach(y=>y.classList.remove('active'));x.classList.add('active');renderLibrary()});
+  $('#librarySearch')?.addEventListener('input',renderLibrary,{once:true});
+  if($('#addBook')) $('#addBook').onclick=()=>openBookForm();
+  $$('[data-edit]').forEach(b=>b.onclick=()=>openBookForm(state.books.find(x=>String(x.id)===String(b.dataset.edit))));
+  $$('[data-detail]').forEach(b=>b.onclick=()=>openBookDetail(state.books.find(x=>String(x.id)===String(b.dataset.detail))));
+}
 function openBookForm(book=null){let edit=!!book;let d=modal(`<div class="modal-head"><div><span class="kicker">${edit?'РЕДАКТИРОВАНИЕ':'НОВАЯ КНИГА'}</span><h3>${edit?'Редактировать книгу':'Добавить книгу'}</h3></div><button class="close">×</button></div><div class="modal-body"><form id="bookForm"><div class="form-grid"><div class="field"><label>Название</label><input id="bfTitle" required value="${esc(book?.title||'')}"></div><div class="field"><label>Автор</label><input id="bfAuthor" value="${esc(book?.author||'')}"></div><div class="field"><label>Страниц</label><input id="bfPages" type="number" min="1" value="${book?.pages||300}"></div><div class="field"><label>Прочитано</label><input id="bfRead" type="number" min="0" value="${book?.read||0}"></div><div class="field"><label>Статус</label><select id="bfStatus"><option value="planned">В планах</option><option value="reading">Читаю</option><option value="finished">Прочитано</option><option value="abandoned">Брошено</option></select></div><div class="field"><label>Жанр</label><input id="bfGenre" value="${esc(book?.genre||'')}"></div></div><div class="cover-upload" style="margin-top:14px"><div class="cover-preview" id="coverPreview">${book?.cover?`<img src="${esc(book.cover)}">`:`<div class="cover-title">Обложка</div>`}</div><p>Можно загрузить собственную обложку.</p><input id="bfCover" type="file" accept="image/*"></div><div class="actions" style="margin-top:16px"><button class="btn">${edit?'Сохранить':'Добавить'}</button>${edit?'<button type="button" class="secondary danger" id="deleteBook">Удалить книгу</button>':''}</div></form></div>`);let currentCover=book?.cover||'';$('#bfStatus',d).value=book?.status||'planned';$('#bfCover',d).onchange=async e=>{let f=e.target.files[0];if(f){currentCover=await resizeImage(f);$('#coverPreview',d).innerHTML=`<img src="${currentCover}">`}};$('.close',d).onclick=()=>d.close();$('#bookForm',d).onsubmit=e=>{e.preventDefault();let pages=Math.max(1,+$('#bfPages',d).value||300),read=Math.min(pages,Math.max(0,+$('#bfRead',d).value||0)),status=$('#bfStatus',d).value;let obj={title:$('#bfTitle',d).value.trim(),author:$('#bfAuthor',d).value.trim()||'Неизвестный автор',pages,read,status,genre:$('#bfGenre',d).value.trim(),cover:currentCover};if(read>=pages){obj.status='finished';obj.finishedAt=book?.finishedAt||new Date().toISOString()}if(edit)Object.assign(book,obj);else state.books.unshift({id:'b'+Date.now(),...obj});save();d.close();toast(edit?'Книга обновлена':'Книга добавлена')};if(edit)$('#deleteBook',d).onclick=()=>{if(confirm('Удалить книгу?')){state.books=state.books.filter(x=>x.id!==book.id);state.history=state.history.filter(x=>x.bookId!==book.id);save();d.close();toast('Книга удалена')}}}
 async function resizeImage(file){return new Promise(res=>{let r=new FileReader();r.onload=()=>{let img=new Image();img.onload=()=>{let c=document.createElement('canvas'),max=600,s=Math.min(1,max/Math.max(img.width,img.height));c.width=Math.round(img.width*s);c.height=Math.round(img.height*s);c.getContext('2d').drawImage(img,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.78))};img.src=r.result};r.readAsDataURL(file)})}
 function openBookDetail(b){let rev=state.reviews[b.id]||{};let s=state.history.filter(x=>x.bookId===b.id);let time=s.reduce((n,x)=>n+x.duration,0),pages=s.reduce((n,x)=>n+(x.pages||0),0);let d=modal(`<div class="modal-head"><div><span class="kicker">КНИГА</span><h3>${esc(b.title)}</h3></div><button class="close">×</button></div><div class="modal-body"><div class="session-picker"><div class="cover">${coverHtml(b)}</div><div><h3>${esc(b.author)}</h3><p>${b.pages} страниц · ${pct(b)}% прочитано</p><div class="progress"><i style="width:${pct(b)}%"></i></div><p>${s.length} сессий · ${fmtTime(time)} · ${pages} стр. по сессиям</p></div></div><div class="stat-grid" style="margin-top:15px"><div class="stat-card"><span>Сессии</span><strong>${s.length}</strong></div><div class="stat-card"><span>Время</span><strong>${fmtTime(time)}</strong></div><div class="stat-card"><span>Оценка</span><strong>${rev.rating||'—'}</strong></div><div class="stat-card"><span>Жанр</span><strong>${esc(b.genre||'—')}</strong></div></div><div class="actions" style="margin-top:16px"><button class="btn" id="editInside">Редактировать</button><button class="secondary" id="reviewInside">Добавить отзыв</button></div></div>`);$('.close',d).onclick=()=>d.close();$('#editInside',d).onclick=()=>{d.close();openBookForm(b)};$('#reviewInside',d).onclick=()=>{d.close();openReview(b)}}
@@ -64,9 +135,63 @@ function openCollection(id){let c=state.collections.find(x=>x.id===id);if(!c)ret
 function renderSeries(){let map=state.series.map(s=>({...s,items:state.books.filter(b=>s.bookIds.includes(b.id))}));$('#seriesGrid').innerHTML=map.length?map.map(s=>`<div class="goal-card"><span class="kicker">СЕРИЯ</span><h3>${esc(s.name)}</h3><p>${s.items.filter(b=>b.status==='finished').length} / ${s.items.length} прочитано</p><div class="progress"><i style="width:${s.items.length?s.items.filter(b=>b.status==='finished').length/s.items.length*100:0}%"></i></div><div style="margin-top:12px">${s.items.map(b=>`<div style="padding:6px 0">${esc(b.title)}</div>`).join('')}</div></div>`).join(''):'<div class="empty">Добавь серию и выбери книги из библиотеки.</div>'}
 function addSeries(){if(!state.books.length){toast('Сначала добавь книги');return}let name=prompt('Название серии');if(!name)return;let raw=prompt('Введи номера книг через запятую, например: 1,2,3');let ids=(raw||'').split(',').map(x=>state.books[+x.trim()-1]?.id).filter(Boolean);state.series.push({id:'s'+Date.now(),name,bookIds:ids});save();toast('Серия создана')}
 function achievements(){let s=stats();return [['📖','Первая книга',s.books>=1],['📜','100 страниц',s.pages>=100],['⏱','Первый час',s.time>=3600],['📚','5 книг',s.books>=5],['🏆','1000 страниц',s.pages>=1000],['🔥','7 дней подряд',s.streak>=7],['✦','Первая сессия',state.history.length>=1],['⭐','Оценил книгу',Object.keys(state.reviews).length>=1]]}
-function renderProfile(){let p=state.profile;$('#profileName').textContent=p.name||'Читатель';$('#profileNameInput').value=p.name||'';$('#profileEmail').textContent=user?.email||'Локальный профиль';$('#profilePhoto').src=p.avatar||'hero-library.png';let s=stats();$('#profileStats').innerHTML=[['Прочитано книг',s.books,'завершённых'],['Страниц',s.pages,'в библиотеке'],['Время чтения',fmtTime(s.time),'по сессиям'],['Серия',s.streak,'дней подряд']].map(x=>`<div class="stat-card"><span>${x[0]}</span><strong>${x[1]}</strong><small>${x[2]}</small></div>`).join('');$('#achievements').innerHTML=achievements().map(x=>`<div class="achievement ${x[2]?'':'locked'}"><div class="medal">${x[0]}</div><b>${x[1]}</b></div>`).join('');$('#saveProfile').onclick=()=>{state.profile.name=$('#profileNameInput').value.trim()||'Читатель';save();toast('Профиль сохранён')};$('#avatarInput').onchange=async e=>{if(e.target.files[0]){state.profile.avatar=await resizeImage(e.target.files[0]);save();toast('Аватар обновлён')}}}
+function renderProfile(){
+  let p=state.profile;
+  $('#profileName').textContent=p.name||'Читатель';
+  $('#profileNameInput').value=p.name||'';
+  $('#profileEmail').textContent=user?.email||'Локальный профиль';
+  $('#profilePhoto').src=p.avatar||'logo-sashok-stishok.png';
+  let s=stats();
+  $('#profileStats').innerHTML=[['Прочитано книг',s.books,'завершённых'],['Страниц',s.pages,'в библиотеке'],['Время чтения',fmtTime(s.time),'по сессиям'],['Серия',s.streak,'дней подряд']].map(x=>`<div class="stat-card"><span>${x[0]}</span><strong>${x[1]}</strong><small>${x[2]}</small></div>`).join('');
+  $('#achievements').innerHTML=achievements().map(x=>`<div class="achievement ${x[2]?'':'locked'}"><div class="medal">${x[0]}</div><b>${x[1]}</b></div>`).join('');
+  $('#saveProfile').onclick=()=>{state.profile.name=$('#profileNameInput').value.trim()||'Читатель';save();toast(user?'Профиль сохранён — синхронизация включена':'Профиль сохранён локально')};
+  $('#avatarInput').onchange=async e=>{if(e.target.files[0]){state.profile.avatar=await resizeImage(e.target.files[0]);save();toast('Аватар обновлён')}};
+  $('#syncNow')?.addEventListener('click',async()=>{if(!user){auth('signup');return}await syncCloud(true);renderProfile()},{once:true});
+  $('#logout')?.addEventListener('click',async()=>{if(!cloud||!user)return;await cloud.auth.signOut();toast('Вы вышли из аккаунта')},{once:true});
+  if($('#syncNow')) $('#syncNow').textContent=user?'Синхронизировать сейчас':'Создать аккаунт для синхронизации';
+  if($('#logout')) $('#logout').hidden=!user;
+}
 function exportAll(){let blob=new Blob([JSON.stringify({version:4,exportedAt:new Date().toISOString(),...state},null,2)],{type:'application/json'});let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='sashok-stishok-backup.json';a.click();URL.revokeObjectURL(a.href);toast('Backup скачан')}
 function renderBackup(){$('#exportAll').onclick=exportAll;$('#importAll').onclick=()=>{let f=$('#importFile').files[0];if(!f){toast('Выбери JSON-файл');return}let r=new FileReader();r.onload=()=>{try{let d=JSON.parse(r.result);if(!d.books)throw 0;state={...state,...d};save();toast('Данные восстановлены')}catch{toast('Не удалось прочитать backup')}};r.readAsText(f)}}
-function auth(){if(user){location.href='profile.html';return}let d=modal(`<div class="modal-head"><div><span class="kicker">АККАУНТ</span><h3>Войти в Сашок стишок</h3></div><button class="close">×</button></div><div class="modal-body"><form id="authForm"><div class="field"><label>Email</label><input id="authEmail" type="email" required></div><div class="field" style="margin-top:12px"><label>Пароль</label><input id="authPass" type="password" minlength="6" required></div><button class="btn" style="margin-top:14px">Войти</button><p id="authMsg" style="color:var(--muted)">Нет аккаунта? После регистрации можно синхронизировать библиотеку на всех устройствах.</p><button type="button" class="secondary" id="signup">Создать профиль</button></form></div>`);$('.close',d).onclick=()=>d.close();$('#authForm',d).onsubmit=async e=>{e.preventDefault();if(!cloud){$('#authMsg',d).textContent='Supabase не подключён.';return}let r=await cloud.auth.signInWithPassword({email:$('#authEmail',d).value,password:$('#authPass',d).value});if(r.error)$('#authMsg',d).textContent=r.error.message;else{d.close();toast('Добро пожаловать')}};$('#signup',d).onclick=async()=>{if(!cloud)return;let email=$('#authEmail',d).value,pass=$('#authPass',d).value;if(!email||!pass){$('#authMsg',d).textContent='Заполни email и пароль';return}let r=await cloud.auth.signUp({email,password:pass,options:{data:{display_name:email.split('@')[0]}}});$('#authMsg',d).textContent=r.error?r.error.message:'Проверь почту и подтверди регистрацию.'}}
-function renderCurrent(){let p=document.body.dataset.page;try{if(p==='home')renderHome();if(p==='library')renderLibrary();if(p==='discover')renderDiscover();if(p==='session')renderSession();if(p==='calendar'){renderCalendar();$('#prevMonth').onclick=()=>{month.setMonth(month.getMonth()-1);renderCalendar()};$('#nextMonth').onclick=()=>{month.setMonth(month.getMonth()+1);renderCalendar()}}if(p==='stats')renderStats();if(p==='notes'){renderNotes();$('#addNote').onclick=addNote}if(p==='goals')renderGoals();if(p==='collections'){renderCollections();$('#addCollection').onclick=addCollection}if(p==='series'){renderSeries();$('#addSeries').onclick=addSeries}if(p==='profile')renderProfile();if(p==='backup')renderBackup();}catch(e){console.error(e)}}
-$('#theme')?.addEventListener('click',()=>{state.theme=state.theme==='dark'?'light':'dark';document.documentElement.classList.toggle('dark',state.theme==='dark');saveLocal()});$('#authOpen')?.addEventListener('click',auth);document.documentElement.classList.toggle('dark',state.theme==='dark');initCloud().then(()=>renderCurrent());
+function auth(mode='login'){
+  if(user){location.href='profile.html';return}
+  let signupMode=mode==='signup';
+  let d=modal(`<div class="modal-head"><div><span class="kicker">АККАУНТ</span><h3 id="authTitle">${signupMode?'Создать аккаунт':'Войти в Сашок стишок'}</h3></div><button class="close">×</button></div><div class="modal-body"><form id="authForm"><div class="field"><label>Имя</label><input id="authName" value="${esc(localStorage.getItem('sst4_name_hint')||'')}" placeholder="Как тебя называть?"></div><div class="field" style="margin-top:12px"><label>Email</label><input id="authEmail" type="email" required></div><div class="field" style="margin-top:12px"><label>Пароль</label><input id="authPass" type="password" minlength="6" required></div><button class="btn" id="authSubmit" style="margin-top:14px">${signupMode?'Создать аккаунт':'Войти'}</button><p id="authMsg" style="color:var(--muted)">${signupMode?'После подтверждения email можно открыть аккаунт на любом устройстве.':'Войди, чтобы библиотека и прогресс синхронизировались между устройствами.'}</p><button type="button" class="secondary" id="authToggle">${signupMode?'Уже есть аккаунт — Войти':'Создать аккаунт'}</button></form></div>`);
+  $('.close',d).onclick=()=>d.close();
+  $('#authToggle',d).onclick=()=>{d.close();auth(signupMode?'login':'signup')};
+  $('#authForm',d).onsubmit=async e=>{
+    e.preventDefault();
+    let msg=$('#authMsg',d),email=$('#authEmail',d).value.trim(),pass=$('#authPass',d).value,name=$('#authName',d).value.trim()||email.split('@')[0]||'Читатель';
+    if(!cloud){msg.textContent='Supabase не подключён. Проверь конфигурацию.';return}
+    $('#authSubmit',d).disabled=true;msg.textContent=signupMode?'Создаём аккаунт…':'Входим…';
+    try{
+      if(signupMode){
+        localStorage.setItem('sst4_name_hint',name);
+        let r=await cloud.auth.signUp({email,password:pass,options:{data:{display_name:name}}});
+        if(r.error)throw r.error;
+        if(r.data.user)state.profile.name=name;
+        if(r.data.session){user=r.data.session.user;await syncCloud(true);d.close();toast('Аккаунт создан и синхронизирован');renderCurrent()}
+        else msg.textContent='Аккаунт создан. Проверь почту, подтверди email и затем войди.';
+      }else{
+        let r=await cloud.auth.signInWithPassword({email,password:pass});
+        if(r.error)throw r.error;
+        d.close();toast('Добро пожаловать');
+      }
+    }catch(err){
+      console.error(err);msg.textContent=authError(err);$('#authSubmit',d).disabled=false;
+    }
+  };
+}
+function authError(err){
+  let m=String(err?.message||err||'Ошибка');
+  if(/invalid login credentials/i.test(m))return 'Неверный email или пароль.';
+  if(/email not confirmed/i.test(m))return 'Подтверди email по письму из Supabase.';
+  if(/already registered|already been registered/i.test(m))return 'Такой email уже зарегистрирован. Переключись на «Войти».';
+  return m;
+}
+function renderCurrent(){let p=document.body.dataset.page;try{if(p==='home')renderHome();if(p==='library')renderLibrary();if(p==='discover')renderDiscover();if(p==='session')renderSession();if(p==='calendar'){renderCalendar();$('#prevMonth').onclick=()=>{month.setMonth(month.getMonth()-1);renderCalendar()};$('#nextMonth').onclick=()=>{month.setMonth(month.getMonth()+1);renderCalendar()}}if(p==='stats')renderStats();if(p==='notes'){renderNotes();$('#addNote').onclick=addNote}if(p==='goals')renderGoals();if(p==='collections'){renderCollections();$('#addCollection').onclick=addCollection}if(p==='series'){renderSeries();$('#addSeries').onclick=addSeries}if(p==='profile')renderProfile();if(p==='backup')renderBackup();refreshChrome();}catch(e){console.error(e)}}
+$('#theme')?.addEventListener('click',()=>{state.theme=state.theme==='dark'?'light':'dark';document.documentElement.classList.toggle('dark',state.theme==='dark');saveLocal()});
+$('#authOpen')?.addEventListener('click',()=>auth('login'));
+$('#createAccount')?.addEventListener('click',()=>auth('signup'));
+document.documentElement.classList.toggle('dark',state.theme==='dark');
+initCloud().then(()=>renderCurrent());

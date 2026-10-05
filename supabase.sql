@@ -50,3 +50,22 @@ for each row execute procedure public.handle_new_user();
 
 -- Для мгновенного обновления уже открытых устройств (необязательно).
 alter publication supabase_realtime add table public.user_data;
+
+
+-- Явно выдаём API-роли права на таблицы. RLS ниже по-прежнему ограничивает доступ только своим данным.
+grant usage on schema public to authenticated;
+grant select, insert, update on public.profiles to authenticated;
+grant select, insert, update on public.user_data to authenticated;
+
+-- Включаем Realtime для профиля тоже, чтобы открытые устройства видели изменения.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname='supabase_realtime' and schemaname='public' and tablename='profiles'
+  ) then
+    execute 'alter publication supabase_realtime add table public.profiles';
+  end if;
+exception when undefined_table then
+  null;
+end $$;
