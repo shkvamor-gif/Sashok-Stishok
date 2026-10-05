@@ -9,11 +9,33 @@ const cloud=SUPA_READY?window.supabase.createClient(window.SUPABASE_URL,window.S
 let currentUser=null,profile=null,syncTimer=null,authMode="login",cloudLoaded=false;
 
 function profileInitial(name,email){return (String(name||email||"К").trim()[0]||"К").toUpperCase()}
+function avatarMarkup(avatar,name,email,cls="profile-avatar"){const initial=profileInitial(name,email);return avatar?`<img src="${esc(avatar)}" alt="">`:initial}
+function setAvatarElement(el,avatar,name,email){if(!el)return;el.innerHTML=avatar?`<img src="${esc(avatar)}" alt="">`:esc(profileInitial(name,email));el.classList.toggle("has-image",!!avatar)}
+function currentDisplayName(){return profile?.display_name||currentUser?.user_metadata?.display_name||currentUser?.email?.split("@")[0]||"Читатель"}
+function calculateStreak(){const dates=new Set(Object.keys(sessions).filter(k=>(sessions[k]?.pages||0)>0));let d=new Date();let streak=0;while(dates.has(key(d))){streak++;d.setDate(d.getDate()-1)}return streak}
+function achievements(){const finished=books.filter(b=>b.status==="finished").length;const pages=books.reduce((s,b)=>s+(+b.read||0),0);const hasSession=sessionHistory.length>0;const hours=seconds/3600;const streak=calculateStreak();return [
+ {icon:"✓",title:"Первая книга",text:"Заверши первую книгу",done:finished>=1},
+ {icon:"100",title:"100 страниц",text:"Прочитай 100 страниц",done:pages>=100},
+ {icon:"1ч",title:"Час чтения",text:"Набери 1 час по таймеру",done:hours>=1},
+ {icon:"5",title:"Пять книг",text:"Заверши 5 книг",done:finished>=5},
+ {icon:"1K",title:"Тысяча страниц",text:"Прочитай 1 000 страниц",done:pages>=1000},
+ {icon:"7",title:"Неделя ритма",text:"Читай 7 дней подряд",done:streak>=7},
+ {icon:"◷",title:"Первая сессия",text:"Сохрани первую сессию",done:hasSession}
+ ]}
+function renderProfilePage(){
+ const name=currentDisplayName(),email=currentUser?.email||"Войди в аккаунт для синхронизации";
+ $("#pageProfileName").textContent=name;$("#pageProfileEmail").textContent=email;$("#pageProfileNameInput").value=currentUser?name:"";
+ setAvatarElement($("#pageProfileAvatar"),profile?.avatar,name,email);
+ const finished=books.filter(b=>b.status==="finished").length,pages=books.reduce((s,b)=>s+(+b.read||0),0),streak=calculateStreak();
+ $("#pBooks").textContent=finished;$("#pPages").textContent=pages.toLocaleString("ru-RU");$("#pTime").textContent=formatTime(seconds);$("#pStreak").textContent=streak;
+ $("#pageSyncBadge").textContent=currentUser?(cloudLoaded?"☁ Синхронизировано":"Подключение…"):"Локально";
+ $("#achievements").innerHTML=achievements().map(a=>`<article class="achievement ${a.done?"done":""}"><div class="achievement-icon">${a.icon}</div><div><b>${a.title}</b><small>${a.text}</small></div><span>${a.done?"Получено":"В процессе"}</span></article>`).join("");
+ $("#profileLogoutPage").hidden=!currentUser;$("#savePageProfile").disabled=!currentUser;$("#avatarInput").disabled=!currentUser;
+}
 function setSyncUI(){
  const btn=$("#profileBtn"), name=$("#profileName"), email=$("#profileEmail"), avatar=$("#profileAvatar");
- if(!currentUser){btn.textContent="К";name.textContent="Гость";email.textContent=SUPA_READY?"Войди для синхронизации":"Синхронизация не настроена";avatar.textContent="К";$("#guestActions").hidden=false;$("#userActions").hidden=true;return}
- const display=profile?.display_name||currentUser.user_metadata?.display_name||currentUser.email?.split("@")[0]||"Читатель";
- const initial=profileInitial(display,currentUser.email);btn.textContent=initial;name.textContent=display;email.textContent=currentUser.email||"Аккаунт подключён";avatar.textContent=initial;$("#guestActions").hidden=true;$("#userActions").hidden=false;$("#profileNameInput").value=display;
+ if(!currentUser){btn.textContent="К";name.textContent="Гость";email.textContent=SUPA_READY?"Войди для синхронизации":"Синхронизация не настроена";avatar.textContent="К";$("#guestActions").hidden=false;$("#userActions").hidden=true;renderProfilePage();return}
+ const display=currentDisplayName(),initial=profileInitial(display,currentUser.email);btn.textContent=initial;name.textContent=display;email.textContent=currentUser.email||"Аккаунт подключён";setAvatarElement(avatar,profile?.avatar,display,currentUser.email);$("#guestActions").hidden=true;$("#userActions").hidden=false;$("#profileNameInput").value=display;renderProfilePage();
 }
 function localPayload(){return {books,notes,goal,sessions,seconds,sessionHistory}}
 function applyPayload(data){if(!data)return; if(Array.isArray(data.books))books=data.books; if(Array.isArray(data.notes))notes=data.notes; if(data.goal!=null)goal=+data.goal||30; if(data.sessions&&typeof data.sessions==='object')sessions=data.sessions; if(data.seconds!=null)seconds=+data.seconds||0; if(Array.isArray(data.sessionHistory))sessionHistory=data.sessionHistory; saveLocal(); renderBooks();renderNotes();renderStats();renderRecentSessions();updateDashboard()}
@@ -70,21 +92,34 @@ function updateDashboard(){
  $("#sBooks").textContent=finished;$("#sPages").textContent=pages.toLocaleString("ru-RU");$("#sTime").textContent=formatTime(seconds);$("#sSpeed").textContent=seconds?Math.round(pages/(seconds/3600)):"—";
  $("#goalText").textContent=`${finished} / ${goal} книг`;$("#goalLeft").textContent=Math.max(0,goal-finished);$("#goalProgress").style.width=Math.min(100,finished/goal*100)+"%";$("#avgPages").textContent=Math.round(pages/Math.max(1,Object.keys(sessions).length))
 }
-function show(v){$$(".page").forEach(x=>x.classList.remove("active"));$("#"+v).classList.add("active");$$(".nav").forEach(x=>x.classList.toggle("active",x.dataset.view===v));let t={home:"Добрый вечер, читатель",library:"Моя библиотека",discover:"Найти книгу",calendar:"Календарь чтения",stats:"Статистика",notes:"Заметки и цитаты",goals:"Цели чтения"};$("#title").textContent=t[v];$("#sidebar").classList.remove("open");if(v==="calendar")renderCalendar();if(v==="stats")renderStats();if(v==="notes")renderNotes()}
-$("#profileBtn").onclick=()=>{let p=$("#profilePanel");p.hidden=!p.hidden};
+function show(v){$$(".page").forEach(x=>x.classList.remove("active"));$("#"+v).classList.add("active");$$(".nav").forEach(x=>x.classList.toggle("active",x.dataset.view===v));let t={home:"Добрый вечер, читатель",library:"Моя библиотека",discover:"Найти книгу",calendar:"Календарь чтения",stats:"Статистика",notes:"Заметки и цитаты",goals:"Цели чтения",profile:"Мой профиль"};$("#title").textContent=t[v];$("#sidebar").classList.remove("open");if(v==="calendar")renderCalendar();if(v==="stats")renderStats();if(v==="notes")renderNotes();if(v==="profile")renderProfilePage()}
+$("#profileBtn").onclick=()=>{if(currentUser){show("profile");return}let p=$("#profilePanel");p.hidden=!p.hidden};
 document.addEventListener("click",e=>{if(!e.target.closest("#profilePanel")&&!e.target.closest("#profileBtn"))$("#profilePanel").hidden=true});
 $("#loginBtn").onclick=()=>{if(!cloud){toast("Сначала настрой Supabase");return}$("#profilePanel").hidden=true;$("#authModal").showModal()};
 $("#authToggle").onclick=()=>{authMode=authMode==="login"?"signup":"login";$("#authTitle").textContent=authMode==="login"?"Войти в Сашок стишок":"Создать профиль";$("#authSub").textContent=authMode==="login"?"Войди, чтобы синхронизировать библиотеку, заметки, цели и статистику между устройствами.":"Создай профиль: данные будут привязаны к аккаунту и доступны на твоих устройствах.";$("#authNameWrap").hidden=authMode!=="signup";$("#authSubmit").textContent=authMode==="login"?"Войти":"Создать профиль";$("#authToggle").textContent=authMode==="login"?"Нет аккаунта? Создать профиль":"Уже есть аккаунт? Войти";$("#authPassword").autocomplete=authMode==="login"?"current-password":"new-password";$("#authStatus").textContent=""};
 $("#authForm").onsubmit=async e=>{e.preventDefault();if(!cloud)return;const email=$("#authEmail").value.trim(),password=$("#authPassword").value,name=$("#authName").value.trim();$("#authStatus").textContent="Подключаем…";let res;if(authMode==="login")res=await cloud.auth.signInWithPassword({email,password});else res=await cloud.auth.signUp({email,password,options:{data:{display_name:name||email.split("@")[0]}}});if(res.error){$("#authStatus").textContent=res.error.message;return}if(authMode==="signup"&&!res.data.session){$("#authStatus").textContent="Проверь почту и подтверди регистрацию, затем войди.";return}$("#authStatus").textContent="Готово";setTimeout(()=>$("#authModal").close(),400)};
 $("#closeAuth").onclick=()=>$("#authModal").close();
-$("#saveProfile").onclick=async()=>{if(!cloud||!currentUser)return;const display=$("#profileNameInput").value.trim()||"Читатель";const {error}=await cloud.from("profiles").upsert({id:currentUser.id,display_name:display,updated_at:new Date().toISOString()});if(error){toast("Не удалось сохранить профиль");return}profile={...(profile||{}),display_name:display};setSyncUI();toast("Профиль сохранён")};
+async function saveProfileDisplay(display){if(!cloud||!currentUser)return false;const {error}=await cloud.from("profiles").upsert({id:currentUser.id,display_name:display,avatar:profile?.avatar||null,updated_at:new Date().toISOString()});if(error){toast("Не удалось сохранить профиль");return false}profile={...(profile||{}),display_name:display};setSyncUI();toast("Профиль сохранён");return true}
+$("#saveProfile").onclick=async()=>{const display=$("#profileNameInput").value.trim()||"Читатель";await saveProfileDisplay(display)};
+$("#savePageProfile").onclick=async()=>{if(!currentUser){toast("Сначала войди в профиль");return}const display=$("#pageProfileNameInput").value.trim()||"Читатель";await saveProfileDisplay(display)};
 $("#logoutBtn").onclick=async()=>{if(cloud)await cloud.auth.signOut();$("#profilePanel").hidden=true;toast("Вы вышли из профиля")};
+$("#profileLogoutPage").onclick=async()=>{if(cloud)await cloud.auth.signOut();toast("Вы вышли из профиля");show("home")};
+$("#avatarInput").onchange=async e=>{const file=e.target.files?.[0];if(!file||!currentUser||!cloud)return;try{const avatar=await imageDataURL(file,220,220,.82);const {error}=await cloud.from("profiles").upsert({id:currentUser.id,display_name:currentDisplayName(),avatar,updated_at:new Date().toISOString()});if(error)throw error;profile={...(profile||{}),avatar};setSyncUI();toast("Аватар обновлён")}catch(err){console.warn(err);toast("Не удалось загрузить аватар")}};
 $$(".nav[data-view]").forEach(x=>x.onclick=()=>show(x.dataset.view));$("#menu").onclick=()=>$("#sidebar").classList.toggle("open");$$("[data-open]").forEach(x=>x.onclick=()=>show(x.dataset.open));
 $("#theme").onclick=()=>{document.body.classList.toggle("dark");localStorage.setItem("sst3_dark",document.body.classList.contains("dark"))};if(localStorage.getItem("sst3_dark")==="true")document.body.classList.add("dark");
 
 $$(".chip").forEach(x=>x.onclick=()=>{$$(".chip").forEach(y=>y.classList.remove("active"));x.classList.add("active");filter=x.dataset.filter;renderBooks()});$("#search").oninput=renderBooks;
-$("#addBook").onclick=()=>$("#bookModal").showModal();
-$("#bookForm").onsubmit=e=>{e.preventDefault();let p=+$("#bPages").value,r=Math.min(p,+$("#bRead").value);books.unshift({id:Date.now(),title:$("#bTitle").value,author:$("#bAuthor").value,pages:p,read:r,status:$("#bStatus").value,color:"green"});save();renderBooks();$("#bookModal").close();e.target.reset();toast("Книга добавлена")};
+let editingBookId=null,pendingCover="";
+function imageDataURL(file,maxW,maxH,quality=.82){return new Promise((resolve,reject)=>{const fr=new FileReader();fr.onerror=reject;fr.onload=()=>{const img=new Image();img.onerror=reject;img.onload=()=>{const scale=Math.min(1,maxW/img.width,maxH/img.height),c=document.createElement("canvas");c.width=Math.max(1,Math.round(img.width*scale));c.height=Math.max(1,Math.round(img.height*scale));const ctx=c.getContext("2d");ctx.drawImage(img,0,0,c.width,c.height);resolve(c.toDataURL("image/jpeg",quality))};img.src=fr.result};fr.readAsDataURL(file)})}
+function updateCoverPreview(src,title="Обложка"){const el=$("#coverPreview");el.innerHTML=src?`<img src="${esc(src)}" alt="">`:`<span>${esc(title)}</span>`}
+function openBookForm(book=null){editingBookId=book?.id||null;pendingCover=book?.cover||"";$("#bookModalKicker").textContent=book?"РЕДАКТИРОВАНИЕ":"НОВАЯ КНИГА";$("#bookModalTitle").textContent=book?"Редактировать книгу":"Добавить вручную";$("#bookSubmit").textContent=book?"Сохранить изменения":"Добавить";$("#deleteBook").hidden=!book;$("#bTitle").value=book?.title||"";$("#bAuthor").value=book?.author||"";$("#bPages").value=book?.pages||300;$("#bRead").value=book?.read||0;$("#bStatus").value=book?.status||"reading";$("#bCover").value="";updateCoverPreview(pendingCover,book?.title||"Обложка");$("#bookModal").showModal()}
+$("#addBook").onclick=()=>openBookForm();
+$("#editBook").onclick=()=>{if(selected)openBookForm(selected);$("#bookView").close()};
+$("#closeBookForm").onclick=()=>$("#bookModal").close();
+$("#bCover").onchange=async e=>{const file=e.target.files?.[0];if(!file)return;try{pendingCover=await imageDataURL(file,500,750,.82);updateCoverPreview(pendingCover,$("#bTitle").value||"Обложка")}catch(err){toast("Не удалось обработать обложку")}};
+$("#bTitle").oninput=()=>{if(!pendingCover)updateCoverPreview("",$("#bTitle").value||"Обложка")};
+$("#bookForm").onsubmit=e=>{e.preventDefault();let p=Math.max(1,+$("#bPages").value||300),r=Math.min(p,Math.max(0,+$("#bRead").value||0)),title=$("#bTitle").value.trim(),author=$("#bAuthor").value.trim();if(editingBookId){const b=books.find(x=>x.id===editingBookId);if(b){Object.assign(b,{title,author,pages:p,read:r,status:$("#bStatus").value,cover:pendingCover||b.cover||""});if(b.read>=b.pages)b.status="finished"}}else books.unshift({id:Date.now(),title,author,pages:p,read:r,status:$("#bStatus").value,color:"green",cover:pendingCover});save();renderBooks();renderProfilePage();$("#bookModal").close();toast(editingBookId?"Книга обновлена":"Книга добавлена");editingBookId=null;pendingCover=""};
+$("#deleteBook").onclick=()=>{if(!editingBookId)return;const b=books.find(x=>x.id===editingBookId);if(!b)return;if(confirm(`Удалить «${b.title}» из библиотеки?`)){books=books.filter(x=>x.id!==editingBookId);sessionHistory=sessionHistory.filter(s=>s.bookId!==editingBookId);save();renderBooks();renderRecentSessions();renderProfilePage();$("#bookModal").close();toast("Книга удалена");editingBookId=null;pendingCover=""}};
 
 function openBook(id){selected=books.find(b=>b.id===id);if(!selected)return;$("#detailCover").outerHTML=coverHTML(selected,true).replace("detail-cover","detail-cover"); // replaced below
  let c=document.querySelector(".book-detail .detail-cover");c.id="detailCover";$("#detailTitle").textContent=selected.title;$("#detailAuthor").textContent=selected.author;$("#detailStatus").textContent=selected.status==="finished"?"ПРОЧИТАНО":selected.status==="reading"?"ЧИТАЮ":"В ПЛАНАХ";$("#detailPct").textContent=pct(selected)+"%";$("#detailBar").style.width=pct(selected)+"%";$("#detailPages").textContent=`${selected.read} из ${selected.pages} страниц`;$("#detailMeta").textContent=[selected.isbn?"ISBN "+selected.isbn:"",selected.year||"",selected.publisher||""].filter(Boolean).join(" · ");$("#bookView").showModal()}
@@ -93,21 +128,12 @@ $("#addPages").onclick=()=>{if(!selected)return;let n=Math.min(10,selected.pages
 $("#markFinished").onclick=()=>{if(!selected)return;let n=selected.pages-selected.read;if(n>0){let k=key(new Date());sessions[k]??={pages:0};sessions[k].pages+=n}selected.read=selected.pages;selected.status="finished";save();renderBooks();openBook(selected.id);toast("Книга отмечена прочитанной")};
 
 $("#continue").onclick=()=>{let b=books.find(x=>x.status==="reading");if(!b){show("library");return}openBook(b.id)};
-$("#timerBtn").onclick=()=>{
- if(!selected){
-   let b=books.find(x=>x.status==="reading");
-   if(!b){toast("Сначала выбери книгу");show("library");return}
-   selected=b;$("#timerBook").textContent=b.title;
- }
- if(!running){
-   running=true;elapsed=0;$("#timer").textContent="00:00:00";$("#timerBtn").textContent="Стоп";$("#timerStatus").textContent="Идёт сессия чтения";
-   timer=setInterval(()=>{elapsed++;$("#timer").textContent=formatClock(elapsed)},1000);
- }else{
-   running=false;clearInterval(timer);$("#timerBtn").textContent="Старт";$("#timerStatus").textContent="Сессия завершена";
-   $("#finishedTime").textContent=formatClock(elapsed);$("#finishedBook").textContent=selected.title;$("#sessionPages").value=0;$("#sessionNote").value="";
-   $("#sessionModal").showModal();
- }
-};
+function renderSessionBookPicker(){const sel=$("#sessionBookSelect");const reading=books.filter(b=>b.status!=="finished");sel.innerHTML=reading.length?reading.map(b=>`<option value="${b.id}">${esc(b.title)} — ${esc(b.author)}</option>`).join(""):'<option value="">Нет доступных книг</option>';if(selected&&reading.some(b=>String(b.id)===String(selected.id)))sel.value=selected.id;updateSessionBookPreview()}
+function updateSessionBookPreview(){const b=books.find(x=>String(x.id)===String($("#sessionBookSelect").value));$("#sessionBookPreview").innerHTML=b?`${coverHTML(b)}<div><b>${esc(b.title)}</b><small>${esc(b.author)} · ${b.read} / ${b.pages} стр.</small></div>`:'<span>Добавь книгу в библиотеку</span>'}
+$("#sessionBookSelect").onchange=updateSessionBookPreview;
+$("#timerBtn").onclick=()=>{if(running){running=false;clearInterval(timer);$("#timerBtn").textContent="Старт";$("#timerStatus").textContent="Сессия завершена";$("#finishedTime").textContent=formatClock(elapsed);$("#finishedBook").textContent=selected?.title||"—";$("#sessionPages").value=0;$("#sessionNote").value="";$("#sessionModal").showModal();return}renderSessionBookPicker();$("#startSessionModal").showModal()};
+$("#closeStartSession").onclick=()=>$("#startSessionModal").close();
+$("#startSessionForm").onsubmit=e=>{e.preventDefault();const b=books.find(x=>String(x.id)===String($("#sessionBookSelect").value));if(!b){toast("Сначала добавь книгу");return}selected=b;$("#timerBook").textContent=b.title;$("#timerStatus").textContent="Идёт сессия чтения";elapsed=0;running=true;$("#timer").textContent="00:00:00";$("#timerBtn").textContent="Стоп";$("#startSessionModal").close();timer=setInterval(()=>{elapsed++;$("#timer").textContent=formatClock(elapsed)},1000)};
 $("#sessionForm").onsubmit=e=>{
  e.preventDefault();
  if(!selected){$("#sessionModal").close();return}
