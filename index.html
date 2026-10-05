@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Сашок стишок — трекер чтения</title>
+  <meta name="description" content="Личный трекер чтения: библиотека, прогресс, цели и статистика.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand"><span class="brand-mark">С</span><span>Сашок стишок</span></div>
+      <nav>
+        <button class="nav-item active" data-view="dashboard"><span>⌂</span>Обзор</button>
+        <button class="nav-item" data-view="library"><span>▦</span>Моя библиотека</button>
+        <button class="nav-item" data-view="goals"><span>◎</span>Цели</button>
+        <button class="nav-item" data-view="stats"><span>◒</span>Статистика</button>
+        <button class="nav-item" data-view="notes"><span>✦</span>Заметки</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <button class="nav-item" id="themeBtn"><span>◐</span>Тема</button>
+        <button class="nav-item" id="exportBtn"><span>⇩</span>Экспорт данных</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="icon-btn mobile-only" id="menuBtn">☰</button>
+        <div>
+          <div class="eyebrow">ТВОЙ ЛИЧНЫЙ ПРОГРЕСС</div>
+          <h1 id="pageTitle">Добрый вечер, читатель</h1>
+        </div>
+        <div class="top-actions">
+          <button class="icon-btn" id="searchBtn" title="Поиск">⌕</button>
+          <button class="avatar" title="Профиль">К</button>
+        </div>
+      </header>
+
+      <section id="dashboard" class="view active-view">
+        <div class="hero-grid">
+          <article class="hero-card">
+            <div class="hero-copy">
+              <span class="pill">Сегодня</span>
+              <h2>Ещё несколько страниц — и ты ближе к цели.</h2>
+              <p>Следи за привычкой чтения без лишнего шума.</p>
+              <button class="primary" id="continueBtn">Продолжить чтение</button>
+            </div>
+            <div class="ring-wrap">
+              <div class="progress-ring" id="dayRing"><span id="dayPercent">0%</span></div>
+              <small>дневная цель</small>
+            </div>
+          </article>
+          <article class="streak-card">
+            <div class="stat-label">Серия чтения</div>
+            <div class="big-number"><span id="streak">7</span> <small>дней</small></div>
+            <div class="mini-bars" id="miniBars"></div>
+            <p>Продолжай в том же духе. Серия обновляется автоматически.</p>
+          </article>
+        </div>
+
+        <div class="section-head">
+          <div><div class="eyebrow">СЕЙЧАС</div><h3>Читаю сейчас</h3></div>
+          <button class="text-btn" data-view-link="library">Вся библиотека →</button>
+        </div>
+        <div id="currentlyReading" class="book-grid"></div>
+
+        <div class="section-head">
+          <div><div class="eyebrow">ЦЕЛИ</div><h3>Мой год</h3></div>
+          <button class="text-btn" data-view-link="goals">Настроить →</button>
+        </div>
+        <div class="goal-grid">
+          <div class="metric-card"><span>Книг прочитано</span><strong id="booksRead">12</strong><small>из <b id="bookGoal">30</b></small><div class="meter"><i id="bookMeter"></i></div></div>
+          <div class="metric-card"><span>Страниц</span><strong id="pagesRead">2 846</strong><small>за этот год</small><div class="sparkline">╱╲╱╱╲╱╲╱╱</div></div>
+          <div class="metric-card"><span>Времени</span><strong>42ч 18м</strong><small>за этот год</small><div class="sparkline">╲╱╲╱╱╲╱╱</div></div>
+        </div>
+      </section>
+
+      <section id="library" class="view">
+        <div class="view-head"><div><div class="eyebrow">КОЛЛЕКЦИЯ</div><h2>Моя библиотека</h2></div><button class="primary" id="addBookBtn">+ Добавить книгу</button></div>
+        <div class="filters"><button class="filter active" data-filter="all">Все</button><button class="filter" data-filter="reading">Читаю</button><button class="filter" data-filter="finished">Прочитано</button><button class="filter" data-filter="planned">Хочу прочитать</button></div>
+        <div id="libraryGrid" class="book-grid library-grid"></div>
+      </section>
+
+      <section id="goals" class="view">
+        <div class="view-head"><div><div class="eyebrow">ПРИВЫЧКА</div><h2>Цели чтения</h2></div></div>
+        <div class="goal-panel">
+          <div><span>Годовая цель</span><strong id="goalLarge">12 / 30 книг</strong><div class="meter large"><i id="goalLargeMeter"></i></div><p>Осталось прочитать <b id="goalLeft">18</b> книг до конца года.</p></div>
+          <div class="goal-settings"><label>Цель на год<input id="goalInput" type="number" min="1" max="365" value="30"></label><button class="primary" id="saveGoal">Сохранить</button></div>
+        </div>
+        <div class="section-head"><div><div class="eyebrow">ДЕНЬ</div><h3>Дневная цель</h3></div></div>
+        <div class="goal-grid"><div class="metric-card"><span>Страниц в день</span><strong>20</strong><small>цель</small></div><div class="metric-card"><span>Среднее</span><strong>24</strong><small>страницы / день</small></div><div class="metric-card"><span>Лучшая серия</span><strong>21</strong><small>день подряд</small></div></div>
+      </section>
+
+      <section id="stats" class="view">
+        <div class="view-head"><div><div class="eyebrow">АНАЛИТИКА</div><h2>Статистика</h2></div></div>
+        <div class="stats-grid">
+          <div class="metric-card"><span>Средняя скорость</span><strong>32</strong><small>стр./час</small></div>
+          <div class="metric-card"><span>Среднее время</span><strong>28м</strong><small>за сессию</small></div>
+          <div class="metric-card"><span>Завершено</span><strong>12</strong><small>книг в 2026</small></div>
+        </div>
+        <div class="chart-card"><div class="section-head compact"><div><div class="eyebrow">ПО МЕСЯЦАМ</div><h3>Страницы</h3></div></div><div class="chart" id="chart"></div><div class="chart-labels"><span>Янв</span><span>Фев</span><span>Мар</span><span>Апр</span><span>Май</span><span>Июн</span><span>Июл</span><span>Авг</span><span>Сен</span><span>Окт</span></div></div>
+      </section>
+
+      <section id="notes" class="view">
+        <div class="view-head"><div><div class="eyebrow">МЫСЛИ</div><h2>Заметки и цитаты</h2></div><button class="primary" id="addNoteBtn">+ Новая заметка</button></div>
+        <div id="notesGrid" class="notes-grid"></div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="bookDialog">
+    <form method="dialog" id="bookForm" class="dialog-card">
+      <button class="dialog-close" value="cancel">×</button>
+      <div class="eyebrow">НОВАЯ КНИГА</div><h2>Добавить в библиотеку</h2>
+      <label>Название<input id="bookTitle" required placeholder="Например, Атлант расправил плечи"></label>
+      <label>Автор<input id="bookAuthor" required placeholder="Имя автора"></label>
+      <label>Страниц<input id="bookPages" type="number" min="1" value="300"></label>
+      <label>Статус<select id="bookStatus"><option value="planned">Хочу прочитать</option><option value="reading">Читаю</option><option value="finished">Прочитано</option></select></label>
+      <button class="primary full" type="submit">Добавить книгу</button>
+    </form>
+  </dialog>
+
+  <dialog id="noteDialog">
+    <form method="dialog" id="noteForm" class="dialog-card">
+      <button class="dialog-close" value="cancel">×</button>
+      <div class="eyebrow">ЗАМЕТКА</div><h2>Что хочется сохранить?</h2>
+      <label>Книга<input id="noteBook" placeholder="Название книги"></label>
+      <label>Текст<textarea id="noteText" rows="5" required placeholder="Мысль, цитата или впечатление…"></textarea></label>
+      <button class="primary full" type="submit">Сохранить</button>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>
