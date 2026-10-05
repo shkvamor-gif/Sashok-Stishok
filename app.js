@@ -3,7 +3,54 @@ const seed=[{id:1,title:"Проект Рози",author:"Грэм Симсион"
 let books=JSON.parse(localStorage.getItem("sst3_books")||"null")||seed,notes=JSON.parse(localStorage.getItem("sst3_notes")||"null")||[],goal=+localStorage.getItem("sst3_goal")||30,sessions=JSON.parse(localStorage.getItem("sst3_sessions")||"{}"),seconds=+localStorage.getItem("sst3_seconds")||0,sessionHistory=JSON.parse(localStorage.getItem("sst3_session_history")||"[]");
 let filter="all",selected=null,month=new Date(new Date().getFullYear(),new Date().getMonth(),1),timer=null,elapsed=0,running=false,stream=null;
 
-function save(){localStorage.setItem("sst3_books",JSON.stringify(books));localStorage.setItem("sst3_notes",JSON.stringify(notes));localStorage.setItem("sst3_goal",goal);localStorage.setItem("sst3_sessions",JSON.stringify(sessions));localStorage.setItem("sst3_seconds",seconds);localStorage.setItem("sst3_session_history",JSON.stringify(sessionHistory))}
+// Облачный профиль и синхронизация через Supabase. Локальные данные остаются резервной копией.
+const SUPA_READY=window.SUPABASE_URL&&window.SUPABASE_ANON_KEY&&window.SUPABASE_URL.startsWith("http")&&!window.SUPABASE_URL.includes("YOUR_")&&!window.SUPABASE_ANON_KEY.includes("YOUR_");
+const cloud=SUPA_READY?window.supabase.createClient(window.SUPABASE_URL,window.SUPABASE_ANON_KEY):null;
+let currentUser=null,profile=null,syncTimer=null,authMode="login",cloudLoaded=false;
+
+function profileInitial(name,email){return (String(name||email||"К").trim()[0]||"К").toUpperCase()}
+function setSyncUI(){
+ const btn=$("#profileBtn"), name=$("#profileName"), email=$("#profileEmail"), avatar=$("#profileAvatar");
+ if(!currentUser){btn.textContent="К";name.textContent="Гость";email.textContent=SUPA_READY?"Войди для синхронизации":"Синхронизация не настроена";avatar.textContent="К";$("#guestActions").hidden=false;$("#userActions").hidden=true;return}
+ const display=profile?.display_name||currentUser.user_metadata?.display_name||currentUser.email?.split("@")[0]||"Читатель";
+ const initial=profileInitial(display,currentUser.email);btn.textContent=initial;name.textContent=display;email.textContent=currentUser.email||"Аккаунт подключён";avatar.textContent=initial;$("#guestActions").hidden=true;$("#userActions").hidden=false;$("#profileNameInput").value=display;
+}
+function localPayload(){return {books,notes,goal,sessions,seconds,sessionHistory}}
+function applyPayload(data){if(!data)return; if(Array.isArray(data.books))books=data.books; if(Array.isArray(data.notes))notes=data.notes; if(data.goal!=null)goal=+data.goal||30; if(data.sessions&&typeof data.sessions==='object')sessions=data.sessions; if(data.seconds!=null)seconds=+data.seconds||0; if(Array.isArray(data.sessionHistory))sessionHistory=data.sessionHistory; saveLocal(); renderBooks();renderNotes();renderStats();renderRecentSessions();updateDashboard()}
+function saveLocal(){localStorage.setItem("sst3_books",JSON.stringify(books));localStorage.setItem("sst3_notes",JSON.stringify(notes));localStorage.setItem("sst3_goal",goal);localStorage.setItem("sst3_sessions",JSON.stringify(sessions));localStorage.setItem("sst3_seconds",seconds);localStorage.setItem("sst3_session_history",JSON.stringify(sessionHistory))}
+async function syncNow(){
+ if(!cloud||!currentUser||!cloudLoaded)return;
+ const {error}=await cloud.from("user_data").upsert({user_id:currentUser.id,data:localPayload(),updated_at:new Date().toISOString()},{onConflict:"user_id"});
+ if(error)console.warn("Sync error",error);
+}
+function queueSync(){if(!cloud||!currentUser||!cloudLoaded)return;clearTimeout(syncTimer);syncTimer=setTimeout(syncNow,500)}
+async function loadCloud(){
+ if(!cloud||!currentUser)return;
+ const {data,error}=await cloud.from("user_data").select("data").eq("user_id",currentUser.id).maybeSingle();
+ if(error){console.warn("Cloud load error",error);toast("Не удалось загрузить данные из облака");return}
+ if(data?.data&&Object.keys(data.data).length){applyPayload(data.data);cloudLoaded=true;toast("Данные синхронизированы");}
+ else {cloudLoaded=true;await syncNow();toast("Локальные данные сохранены в профиль")}
+}
+async function loadProfile(){
+ if(!cloud||!currentUser)return;
+ let {data,error}=await cloud.from("profiles").select("id,display_name,avatar").eq("id",currentUser.id).maybeSingle();
+ if(error)console.warn("Profile load error",error);
+ profile=data||null;setSyncUI();
+}
+async function initCloud(){
+ setSyncUI();
+ if(!cloud){$("#profileEmail").textContent="Добавь ключи Supabase в supabase-config.js";return}
+ const {data}=await cloud.auth.getSession();
+ currentUser=data.session?.user||null;
+ if(currentUser){await loadProfile();await loadCloud()}
+ cloud.auth.onAuthStateChange(async (_event,session)=>{
+   currentUser=session?.user||null; cloudLoaded=false;
+   if(currentUser){await loadProfile();await loadCloud()} else {profile=null;setSyncUI()}
+ });
+}
+
+
+function save(){saveLocal();queueSync()}
 function esc(x){return String(x??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
 function toast(t){let x=$("#toast");x.textContent=t;x.classList.add("show");setTimeout(()=>x.classList.remove("show"),2100)}
 function key(d){return d.toISOString().slice(0,10)}
@@ -24,6 +71,14 @@ function updateDashboard(){
  $("#goalText").textContent=`${finished} / ${goal} книг`;$("#goalLeft").textContent=Math.max(0,goal-finished);$("#goalProgress").style.width=Math.min(100,finished/goal*100)+"%";$("#avgPages").textContent=Math.round(pages/Math.max(1,Object.keys(sessions).length))
 }
 function show(v){$$(".page").forEach(x=>x.classList.remove("active"));$("#"+v).classList.add("active");$$(".nav").forEach(x=>x.classList.toggle("active",x.dataset.view===v));let t={home:"Добрый вечер, читатель",library:"Моя библиотека",discover:"Найти книгу",calendar:"Календарь чтения",stats:"Статистика",notes:"Заметки и цитаты",goals:"Цели чтения"};$("#title").textContent=t[v];$("#sidebar").classList.remove("open");if(v==="calendar")renderCalendar();if(v==="stats")renderStats();if(v==="notes")renderNotes()}
+$("#profileBtn").onclick=()=>{let p=$("#profilePanel");p.hidden=!p.hidden};
+document.addEventListener("click",e=>{if(!e.target.closest("#profilePanel")&&!e.target.closest("#profileBtn"))$("#profilePanel").hidden=true});
+$("#loginBtn").onclick=()=>{if(!cloud){toast("Сначала настрой Supabase");return}$("#profilePanel").hidden=true;$("#authModal").showModal()};
+$("#authToggle").onclick=()=>{authMode=authMode==="login"?"signup":"login";$("#authTitle").textContent=authMode==="login"?"Войти в Сашок стишок":"Создать профиль";$("#authSub").textContent=authMode==="login"?"Войди, чтобы синхронизировать библиотеку, заметки, цели и статистику между устройствами.":"Создай профиль: данные будут привязаны к аккаунту и доступны на твоих устройствах.";$("#authNameWrap").hidden=authMode!=="signup";$("#authSubmit").textContent=authMode==="login"?"Войти":"Создать профиль";$("#authToggle").textContent=authMode==="login"?"Нет аккаунта? Создать профиль":"Уже есть аккаунт? Войти";$("#authPassword").autocomplete=authMode==="login"?"current-password":"new-password";$("#authStatus").textContent=""};
+$("#authForm").onsubmit=async e=>{e.preventDefault();if(!cloud)return;const email=$("#authEmail").value.trim(),password=$("#authPassword").value,name=$("#authName").value.trim();$("#authStatus").textContent="Подключаем…";let res;if(authMode==="login")res=await cloud.auth.signInWithPassword({email,password});else res=await cloud.auth.signUp({email,password,options:{data:{display_name:name||email.split("@")[0]}}});if(res.error){$("#authStatus").textContent=res.error.message;return}if(authMode==="signup"&&!res.data.session){$("#authStatus").textContent="Проверь почту и подтверди регистрацию, затем войди.";return}$("#authStatus").textContent="Готово";setTimeout(()=>$("#authModal").close(),400)};
+$("#closeAuth").onclick=()=>$("#authModal").close();
+$("#saveProfile").onclick=async()=>{if(!cloud||!currentUser)return;const display=$("#profileNameInput").value.trim()||"Читатель";const {error}=await cloud.from("profiles").upsert({id:currentUser.id,display_name:display,updated_at:new Date().toISOString()});if(error){toast("Не удалось сохранить профиль");return}profile={...(profile||{}),display_name:display};setSyncUI();toast("Профиль сохранён")};
+$("#logoutBtn").onclick=async()=>{if(cloud)await cloud.auth.signOut();$("#profilePanel").hidden=true;toast("Вы вышли из профиля")};
 $$(".nav[data-view]").forEach(x=>x.onclick=()=>show(x.dataset.view));$("#menu").onclick=()=>$("#sidebar").classList.toggle("open");$$("[data-open]").forEach(x=>x.onclick=()=>show(x.dataset.open));
 $("#theme").onclick=()=>{document.body.classList.toggle("dark");localStorage.setItem("sst3_dark",document.body.classList.contains("dark"))};if(localStorage.getItem("sst3_dark")==="true")document.body.classList.add("dark");
 
@@ -140,4 +195,4 @@ function renderCalendar(){let y=month.getFullYear(),m=month.getMonth();$("#month
 $("#prevMonth").onclick=()=>{month.setMonth(month.getMonth()-1);renderCalendar()};$("#nextMonth").onclick=()=>{month.setMonth(month.getMonth()+1);renderCalendar()};
 function renderStats(){let vals=Array(12).fill(0);Object.entries(sessions).forEach(([d,v])=>vals[new Date(d).getMonth()]+=v.pages||0);let max=Math.max(...vals,1);$("#bars").innerHTML=vals.map(v=>`<i title="${v} стр." style="height:${Math.max(5,v/max*100)}%"></i>`).join("");updateDashboard()}
 $$("dialog").forEach(d=>d.addEventListener("click",e=>{if(e.target===d){if(d.id==="scanModal")stopScan();d.close()}}));
-renderBooks();renderNotes();renderStats();renderRecentSessions();updateDashboard();
+renderBooks();renderNotes();renderStats();renderRecentSessions();updateDashboard();initCloud();

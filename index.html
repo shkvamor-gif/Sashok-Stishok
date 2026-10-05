@@ -9,11 +9,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
 </head>
 <body>
 <div class="layout">
 <aside class="sidebar" id="sidebar">
-  <div class="brand"><span class="logo">С</span><div><b>Сашок стишок</b><small>reading tracker · 3.0</small></div></div>
+  <div class="brand"><span class="logo">С</span><div><b>Сашок стишок</b><small>reading tracker · 3.2</small></div></div>
   <nav>
     <button class="nav active" data-view="home"><span>⌂</span>Обзор</button>
     <button class="nav" data-view="library"><span>▦</span>Библиотека</button>
@@ -30,8 +32,18 @@
 <header class="topbar">
  <button class="mobile-menu" id="menu">☰</button>
  <div><div class="overline">ЛИЧНЫЙ ТРЕКЕР ЧТЕНИЯ</div><h1 id="title">Добрый вечер, читатель</h1></div>
- <div class="actions"><button class="round" id="globalSearch">⌕</button><button class="profile">К</button></div>
+ <div class="actions"><button class="round" id="globalSearch">⌕</button><button class="profile" id="profileBtn">К</button></div>
 </header>
+<div class="profile-panel" id="profilePanel" hidden>
+  <div class="profile-head"><div class="profile-avatar" id="profileAvatar">К</div><div><b id="profileName">Гость</b><small id="profileEmail">Синхронизация выключена</small></div></div>
+  <div id="guestActions"><button class="btn full" id="loginBtn">Войти / создать профиль</button><p class="profile-hint">После входа библиотека и статистика будут доступны на любом устройстве.</p></div>
+  <div id="userActions" hidden>
+    <label class="profile-label">Имя профиля<input id="profileNameInput" maxlength="40" placeholder="Как тебя называть"></label>
+    <button class="btn full" id="saveProfile">Сохранить профиль</button>
+    <button class="secondary full" id="logoutBtn">Выйти</button>
+  </div>
+</div>
+
 
 <section class="page active" id="home">
  <div class="welcome">
@@ -112,6 +124,18 @@
     <button class="btn full" id="saveSession">Сохранить сессию</button>
   </form>
 </dialog>
+
+<dialog id="authModal"><form method="dialog" id="authForm" class="modal auth-modal">
+  <button class="close" id="closeAuth">×</button>
+  <span>ПРОФИЛЬ</span><h2 id="authTitle">Войти в Сашок стишок</h2>
+  <p class="auth-sub" id="authSub">Войди, чтобы синхронизировать библиотеку, заметки, цели и статистику между устройствами.</p>
+  <label>Почта<input id="authEmail" type="email" autocomplete="email" required></label>
+  <label>Пароль<input id="authPassword" type="password" minlength="6" autocomplete="current-password" required></label>
+  <label id="authNameWrap" hidden>Имя профиля<input id="authName" maxlength="40" placeholder="Например, Костя"></label>
+  <button class="btn full" id="authSubmit">Войти</button>
+  <button type="button" class="link auth-toggle" id="authToggle">Нет аккаунта? Создать профиль</button>
+  <p class="auth-status" id="authStatus"></p>
+</form></dialog>
 <div id="toast"></div>
 <script src="app.js"></script>
 </body>
