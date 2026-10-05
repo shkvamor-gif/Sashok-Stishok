@@ -1,1 +1,46 @@
-<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Добрый вечер, читатель — Сашок стишок</title><meta name="description" content="Сашок стишок — уютный личный читательский дневник"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Playfair+Display:wght@500;600;700;800&display=swap" rel="stylesheet"><link rel="stylesheet" href="styles.css"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="supabase-config.js"></script></head><body data-page="home"><div class="app"><aside class="sidebar"><div class="brand"><img src="hero-library.png" alt=""><div><b>Сашок стишок</b><small>личный читательский дневник</small></div></div><nav><a class="nav active" href="index.html"><span>⌂</span>Обзор</a><a class="nav " href="library.html"><span>▦</span>Библиотека</a><a class="nav " href="discover.html"><span>⌕</span>Найти книгу</a><a class="nav " href="session.html"><span>◷</span>Сессия</a><a class="nav " href="calendar.html"><span>▦</span>Календарь</a><a class="nav " href="stats.html"><span>◒</span>Статистика</a><a class="nav " href="notes.html"><span>✦</span>Заметки</a><a class="nav " href="goals.html"><span>◎</span>Цели</a><a class="nav " href="collections.html"><span>◫</span>Коллекции</a><a class="nav " href="series.html"><span>≡</span>Серии</a><a class="nav " href="profile.html"><span>◉</span>Профиль</a></nav><div class="side-bottom"><button class="nav" id="theme"><span>◐</span>Тёмная тема</button><a class="nav" href="backup.html"><span>⇩</span>Экспорт</a></div></aside><main class="main"><header class="topbar"><div><div class="overline">САШОК СТИШОК · ЛИЧНЫЙ ДНЕВНИК</div><h1>Добрый вечер, читатель</h1></div><div class="top-actions"><button class="secondary" id="authOpen">Войти</button><a href="profile.html"><img class="avatar-mini" id="miniAvatar" src="hero-library.png" alt="Профиль"></a></div></header><div class="content" id="app"><section class="hero"><div><span class="tag">УЮТНАЯ БИБЛИОТЕКА</span><h2>Твоё чтение.<br>Твой ритм.</h2><p>Книги, прогресс, мысли и статистика — в одном спокойном пространстве. Здесь хранится история твоего чтения.</p><div class="actions"><a class="btn" href="session.html">Начать чтение</a><a class="secondary" href="discover.html">＋ Найти книгу</a></div></div></section><div class="quick-grid" id="homeQuick"></div><div class="section-head"><div><span>В ФОКУСЕ</span><h2>Читаю сейчас</h2></div><a class="secondary" href="library.html">Вся библиотека →</a></div><div class="books" id="homeBooks"></div><div class="section-head"><div><span>ПОСЛЕДНИЕ СЕССИИ</span><h2>Твой ритм чтения</h2></div><a class="secondary" href="stats.html">Подробная статистика</a></div><div class="panel" id="homeSessions"></div></div></main></div><div id="modals"></div><div id="toastRoot"></div><script src="app.js"></script></body></html>
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Добрый вечер, читатель — Сашок стишок</title><meta name="description" content="Сашок стишок — уютный личный читательский дневник"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Playfair+Display:wght@500;600;700;800&display=swap" rel="stylesheet"><link rel="stylesheet" href="styles.css"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="supabase-config.js"></script></head><body data-page="home" class="home-page">
+<div class="home-hero">
+  <div class="hero-brand-lockup">
+    <div class="logo-mark">📖</div>
+    <div class="logo-wordmark"><strong>Сашок<br>стишок</strong><span>БОЛЬШЕ ЧЕМ ЧТЕНИЕ</span></div>
+  </div>
+  <div class="hero-copy"><span class="hero-script">Хорошие книги делают<br>жизнь лучше <b>♥</b></span></div>
+  <div class="hero-books"><span>АТМОСФЕРА</span><span>МАЛЕНЬКИЕ ПРИВЫЧКИ</span><span>1984</span><span>МАРСИАНИН</span></div>
+</div>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><div class="brand-avatar">📖</div><div><b>Сашок<br>стишок</b><small>личный читательский дневник</small></div></div>
+  <nav>
+    <a class="nav active" href="index.html"><span>⌂</span>Главная</a>
+    <a class="nav" href="library.html"><span>▦</span>Моя библиотека</a>
+    <a class="nav" href="session.html"><span>◷</span>Начать сессию</a>
+    <a class="nav" href="stats.html"><span>◒</span>Статистика</a>
+    <a class="nav" href="calendar.html"><span>▣</span>Календарь</a>
+    <a class="nav" href="notes.html"><span>✦</span>Заметки</a>
+    <a class="nav" href="goals.html"><span>◎</span>Цели</a>
+    <a class="nav" href="collections.html"><span>◫</span>Коллекции</a>
+    <a class="nav" href="series.html"><span>≡</span>Серии</a>
+    <a class="nav" href="profile.html"><span>◉</span>Мой профиль</a>
+  </nav>
+  <div class="side-bottom"><button class="nav" id="theme"><span>◐</span>Тёмная тема</button><a class="nav" href="backup.html"><span>⇩</span>Backup</a></div>
+</aside>
+<main class="main">
+<header class="topbar"><div><div class="overline">ЛИЧНЫЙ ЧИТАТЕЛЬСКИЙ ДНЕВНИК</div><h1>Моя библиотека</h1></div><div class="top-actions"><span class="sync" id="syncBadge">● Локально</span><button class="secondary" id="authOpen">Войти</button><a href="profile.html"><img class="avatar-mini" id="miniAvatar" src="hero-library.png" alt="Профиль"></a></div></header>
+<div class="content" id="app">
+  <section class="dashboard-grid">
+    <div class="library-zone">
+      <div class="section-head compact"><div><span>КОЛЛЕКЦИЯ</span><h2>Моя библиотека <em id="homeBookCount">12 книг</em></h2></div><a class="btn" href="library.html">＋ Добавить книгу</a></div>
+      <div class="library-toolbar"><input class="search" id="homeSearch" placeholder="Поиск по моей библиотеке..."><div class="chips"><button class="chip active">Все</button><button class="chip">Читаю</button><button class="chip">Прочитано</button><button class="chip">В планах</button></div></div>
+      <div class="books home-books" id="homeBooks"></div>
+    </div>
+    <aside class="profile-zone panel" id="homeProfile"></aside>
+  </section>
+  <section class="lower-grid">
+    <div class="session-zone panel cozy-session" id="homeSessionPanel"></div>
+    <div class="stats-zone panel" id="homeStatsPanel"></div>
+    <div class="calendar-zone panel" id="homeCalendarPanel"></div>
+  </section>
+  <section class="recent-zone panel" id="homeSessions"></section>
+</div></main></div>
+<div id="modals"></div><div id="toastRoot"></div>
+<script src="app.js"></script></body></html>
